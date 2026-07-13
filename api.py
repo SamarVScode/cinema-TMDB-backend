@@ -94,6 +94,36 @@ async def auto_download(query: str, bot: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/auto_download_all", response_model=AutoDownloadResponse)
+async def auto_download_all(query: str):
+    """
+    Simultaneously scrape and download the movie from ALL target bots at once.
+    """
+    from relay import target_bots
+    
+    if not query or len(query) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters.")
+        
+    target_user_id = int(os.getenv("TARGET_USER_ID", "8338474200"))
+    
+    try:
+        # Run auto_forward_movie concurrently for all bots
+        tasks = [auto_forward_movie(query, bot, target_user_id) for bot in target_bots]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        success_count = 0
+        for r in results:
+            if isinstance(r, dict) and r.get("status") == "success":
+                success_count += 1
+                
+        if success_count > 0:
+            return AutoDownloadResponse(status="success", message=f"Successfully forwarded files from {success_count}/{len(target_bots)} bots to {target_user_id}")
+        else:
+            return AutoDownloadResponse(status="error", message="Failed to find or forward the movie from any bot.")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
